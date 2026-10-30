@@ -2,10 +2,4 @@
 name = "lang2lang"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = [
-    "keyboard>=0.13.5",
-    "pyautogui>=0.9.54",
-    "pynput>=1.8.2",
-    "pyyaml>=6.0.3",
-    "system-hotkey>=1.0.4",
-]
+dependencies = []

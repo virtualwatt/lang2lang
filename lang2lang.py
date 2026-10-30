@@ -14,6 +14,7 @@ lang2lang.py — одноразовый конвертер выделенног�
 """
 
 import argparse
+import ast
 import json
 import os
 import subprocess
@@ -21,10 +22,18 @@ import sys
 import threading
 import tkinter
 
-import pyautogui
-import yaml
-
 import logging
+import string
+
+# Символы, которые не должны влиять на выбор таблицы
+PUNCTUATION = set(string.punctuation) | set("«»—–…“”„‘’")
+
+# Кандидаты для целевого языка -> как распознать xkb-код
+LANG_MATCHERS = {
+    "en": lambda code: code == "us" or "eng" in code.split("+") or "en" in code.split("+"),
+    "ru": lambda code: "ru" in code.split("+"),
+    "ua": lambda code: "ua" in code.split("+"),
+}
 
 logging.basicConfig(
     filename='/tmp/lang2lang.log',
@@ -42,6 +51,64 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "lang2lang.yaml")
 ERROR_SOUND = os.path.join(SCRIPT_DIR, "error.wav")
 
+
+def get_input_sources():
+    """Возвращает список xkb-кодов в порядке input-sources."""
+    try:
+        res = subprocess.run(
+            ["gsettings", "get", "org.gnome.desktop.input-sources", "sources"],
+            capture_output=True, check=True, text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return []
+
+    raw = res.stdout.strip()
+    try:
+        parsed = ast.literal_eval(raw)  # [('xkb', 'ca+eng'), ...]
+    except (ValueError, SyntaxError):
+        return []
+
+    return [code for _kind, code in parsed if _kind == "xkb"]
+
+
+def find_layout_index(target_lang):
+    """Ищет индекс раскладки для целевого языка или None."""
+    matcher = LANG_MATCHERS.get(target_lang)
+    if matcher is None:
+        return None
+
+    sources = get_input_sources()
+    for idx, code in enumerate(sources):
+        if matcher(code):
+            return idx
+    return None
+
+
+def switch_layout(target_lang):
+    """Переключение текущей раскладки на целевой язык через D-Bus интерфейс Shyriiwook"""
+    # Сначала находим фактическое имя раскладки, соответствующее целевому языку
+    idx = find_layout_index(target_lang)
+    if idx is None:
+        log(f"layout for '{target_lang}' not found")
+        return
+
+    # Получаем список раскладок и извлекаем имя целевой раскладки
+    sources = get_input_sources()
+    if not sources or idx >= len(sources):
+        return
+    layout_name = sources[idx]
+
+    try:
+        subprocess.run([
+            "gdbus", "call",
+            "--session",
+            "--dest", "org.gnome.Shell",
+            "--object-path", "/me/madhead/Shyriiwook",
+            "--method", "me.madhead.Shyriiwook.activate",
+            layout_name
+        ], check=False, capture_output=True)
+    except FileNotFoundError:
+        log("gdbus not found")
 
 # ---------------------------------------------------------------
 # 1. Загрузка парных таблиц из JSON-файлов
@@ -118,7 +185,7 @@ def set_clipboard(text):
 
 def paste():
     """Эмулирует Ctrl+V."""
-    #pyautogui.hotkey("ctrl", "v")
+    # pyautogui.hotkey("ctrl", "v")
     subprocess.run(["xdotool", "key", "ctrl+v"], check=False)
 
 
@@ -141,6 +208,8 @@ def convert(text, target_lang, tables):
     """
     Ищет пару, у которой to == target_lang и которая даёт
     максимальное число совпадений с исходным текстом.
+    Пунктуация при подсчёте score игнорируется, чтобы общие
+    символы (запятая, точка и т.п.) не выбирали чужую таблицу.
     Возвращает (converted_text, found_bool).
     """
     candidates = [t for t in tables if t["to"] == target_lang]
@@ -150,7 +219,10 @@ def convert(text, target_lang, tables):
     best = None
     best_score = 0
     for t in candidates:
-        score = sum(1 for ch in text if ch in t["map"])
+        score = sum(
+            1 for ch in text
+            if ch not in PUNCTUATION and ch in t["map"]
+        )
         if score > best_score:
             best_score = score
             best = t
@@ -184,6 +256,9 @@ def run_once(target_lang):
         play_error_sound()
         sys.exit(0)
 
+    switch_layout(target_lang)
+    # threading.Event().wait(0.1)  # небольшая пауза, чтобы раскладка применилась
+
     # orig_clipboard = get_clipboard()
     # set_clipboard(converted)
     #
@@ -194,6 +269,7 @@ def run_once(target_lang):
     #
     # # Восстанавливаем буфер
     # set_clipboard(orig_clipboard)
+
     subprocess.run(["xdotool", "type", "--clearmodifiers", converted], check=False)
 
 
@@ -216,24 +292,6 @@ def main():
     if not target_lang:
         print("[lang2lang] Пустой целевой язык", file=sys.stderr)
         sys.exit(1)
-
-    # Конфиг нужен только для проверки, что целевой язык вообще известен
-    # (можно и не читать, но полезно для раннего обнаружения опечаток)
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                cfg = yaml.safe_load(f) or {}
-            known = set(cfg.get("hotkeys", {}).keys())
-            if known and target_lang not in known:
-                print(
-                    f"[lang2lang] Целевой язык '{target_lang}' не описан в hotkeys конфига. "
-                    f"Известные: {', '.join(sorted(known))}",
-                    file=sys.stderr,
-                )
-                # Не выходим — возможно, пользователь хочет использовать язык,
-                # для которого нет горячей клавиши, но есть JSON-пара.
-        except Exception as e:
-            print(f"[lang2lang] Не удалось прочитать конфиг: {e}", file=sys.stderr)
 
     run_once(target_lang)
 
