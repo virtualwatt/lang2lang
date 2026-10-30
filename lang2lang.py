@@ -9,8 +9,8 @@ lang2lang.py — одноразовый конвертер выделенног�
 
 Горячие клавиши назначаются через настройки GNOME на запуск этой команды.
 
-Зависимости: pyyaml, pyautogui
-Системные: xclip, paplay
+Зависимости: -
+Системные: paplay
 """
 
 import argparse
@@ -48,7 +48,6 @@ def log(msg):
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(SCRIPT_DIR, "lang2lang.yaml")
 ERROR_SOUND = os.path.join(SCRIPT_DIR, "error.wav")
 
 

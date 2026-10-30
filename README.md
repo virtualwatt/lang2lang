@@ -1,26 +1,26 @@
 # lang2lang
 
-Одноразовый конвертер выделенного текста между раскладками клавиатуры. Выделяете текст, нажимаете горячую клавишу — скрипт читает выделение, преобразует символы в целевую раскладку, переключает системную раскладку на целевую и печатает результат вместо выделения.
+A one-shot converter for selected text between keyboard layouts. Select text, press a hotkey — the script reads the selection, maps each character to the target layout, switches the system layout to the target, and types the result in place of the selection.
 
-Поддерживаемые направления задаются JSON-файлами в каталоге проекта: `en-ru.json`, `en-ua.json`, `ru-ua.json` (и обратные пары внутри них). Добавить новый язык можно, просто положив рядом ещё один JSON-файл — код трогать не нужно.
+Supported directions are defined by JSON files in the project directory: `en-ru.json`, `en-ua.json`, `ru-ua.json` (and the reverse pairs inside them). To add a new language you just drop another JSON file next to them — no code changes required.
 
 ---
 
-## Что нужно для работы
+## Requirements
 
-### 1. Системные утилиты
+### 1. System utilities
 
-Скрипт вызывает их из командной строки, поэтому они должны быть в `PATH`.
+The script calls these from the command line, so they must be in `PATH`.
 
-| Утилита | Зачем |
+| Utility | Purpose |
 |---|---|
-| `xdotool` | эмуляция ввода (`xdotool type`, `xdotool key`) |
-| `xclip` | работа с буфером обмена (опционально, код сейчас использует `xdotool type` напрямую) |
-| `paplay` | воспроизведение `error.wav` (pipewire/pulseaudio) |
-| `gsettings` | чтение списка раскладок GNOME |
-| `gdbus` | вызов расширения Shyriiwook для переключения раскладки |
+| `xdotool` | input emulation (`xdotool type`) |
+| `xclip` | clipboard access |
+| `paplay` | plays `error.wav` (pipewire/pulseaudio) |
+| `gsettings` | reads the GNOME layout list |
+| `gdbus` | calls the Shyriiwook extension to switch layout |
 
-Установка (Debian/Ubuntu):
+Install (Debian/Ubuntu):
 
 ```bash
 sudo apt install xdotool xclip pulseaudio-utils python3-tk
@@ -38,38 +38,38 @@ Arch:
 sudo pacman -S xdotool xclip libpulse tk
 ```
 
-> `python3-tk` нужен, потому что скрипт читает PRIMARY selection через `tkinter`. В некоторых дистрибутивах он не входит в базовую поставку Python.
+> `python3-tk` is needed because the script reads the PRIMARY selection through `tkinter`. Some distributions do not ship it with the base Python package.
 
-### 2. GNOME-расширение Shyriiwook
+### 2. GNOME extension Shyriiwook
 
-Стандартный `gsettings set org.gnome.desktop.input-sources current N` в современных версиях GNOME **не работает** — ключ помечен как устаревший и игнорируется. Переключение раскладки делается через D-Bus-интерфейс расширения.
+The standard `gsettings set org.gnome.desktop.input-sources current N` **does not work** on modern GNOME — the key is deprecated and ignored. Layout switching is done through the D-Bus interface exposed by the extension.
 
-1. Установите расширение **Shyriiwook** с [extensions.gnome.org](https://extensions.gnome.org/) (или через `gnome-extensions install`).
-2. Включите его:
+1. Install the **Shyriiwook** extension from [extensions.gnome.org](https://extensions.gnome.org/) (or via `gnome-extensions install`).
+2. Enable it:
 
 ```bash
 gnome-extensions enable shyriiwook@madhead.me
 ```
 
-3. Перезайдите в сессию (или `Alt+F2` → `r` → Enter на X11), чтобы расширение загрузилось.
-4. Проверьте, что интерфейс доступен:
+3. Log out and back in (or `Alt+F2` → `r` → Enter on X11) so the extension loads.
+4. Verify the interface is available:
 
 ```bash
 gdbus introspect --session --dest org.gnome.Shell \
     --object-path /me/madhead/Shyriiwook --only-properties
 ```
 
-   В выводе должен быть список раскладок (`availableLayouts`).
+   The output should contain the layout list (`availableLayouts`).
 
-### 3. Утилита `uv`
+### 3. The `uv` utility
 
-`uv` — менеджер окружений и зависимостей Python. Установка:
+`uv` is a Python environment and dependency manager. Install it:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-После установки перезапустите shell или выполните `source ~/.local/bin/env` (путь может отличаться — смотрите вывод установщика). Проверка:
+After installation, restart your shell or run `source ~/.local/bin/env` (the path may differ — check the installer output). Verify:
 
 ```bash
 uv --version
@@ -77,83 +77,83 @@ uv --version
 
 ---
 
-## Установка проекта
+## Installing the project
 
 ```bash
-git clone <URL-репозитория> ~/dev/py/lang2lang
+git clone <REPO-URL> ~/dev/py/lang2lang
 cd ~/dev/py/lang2lang
 
-# создаём виртуальное окружение и ставим зависимости
+# create the virtual environment and install dependencies
 uv sync
 ```
 
-`uv sync` создаст `.venv/` в каталоге проекта и поставит pip-зависимости из `pyproject.toml` (если список пуст — окружение будет пустым, но `.venv/bin/python` всё равно появится и будет использоваться).
+`uv sync` creates `.venv/` in the project directory and installs the pip dependencies from `pyproject.toml` (if the list is empty the environment will be empty, but `.venv/bin/python` will still exist and be used).
 
-Проверка, что скрипт запускается:
+Verify the script runs:
 
 ```bash
 uv run python lang2lang.py --convert en
 ```
 
-Ожидаемое поведение: если ничего не выделено — тишина и звук ошибки (если `error.wav` есть), в `/tmp/lang2lang.log` появится запись.
+Expected behavior: if nothing is selected — silence and an error sound (if `error.wav` is present); a record appears in `/tmp/lang2lang.log`.
 
 ---
 
-## Назначение горячих клавиш
+## Assigning hotkeys
 
-Горячие клавиши назначаются средствами GNOME: **Настройки → Клавиатура → Сочетания клавиш → Пользовательские сочетания** (Settings → Keyboard → Keyboard Shortcuts → Custom Shortcuts → `+`).
+Hotkeys are assigned through GNOME: **Settings → Keyboard → Keyboard Shortcuts → Custom Shortcuts** (`+`).
 
-Для каждой команды задайте имя, сочетание и **полную команду**. Команда должна запускать Python из `.venv` проекта через `uv run`, чтобы использовалось правильное окружение.
+For each command set a name, a key combination, and the **full command**. The command must launch the project's `.venv` Python through `uv run` so the correct environment is used.
 
-Шаблон команды:
+Command template:
 
 ```
 /home/USER/.local/bin/uv run /path/to/lang2lang/.venv/bin/python /path/to/lang2lang/lang2lang.py --convert LANG
 ```
 
-Замените `USER` и `/path/to/lang2lang` на свои. Пример для пользователя `virtualvat`, проекта в `~/dev/py/lang2lang`:
+Replace `USER` and `/path/to/lang2lang` with your own. Example for user `virtualvat` with the project in `~/dev/py/lang2lang`:
 
-**Английский** (`Super+Alt+E`):
+**English** (`Super+Alt+E`):
 
 ```
 /home/virtualvat/.local/bin/uv run /home/virtualvat/dev/py/lang2lang/.venv/bin/python /home/virtualvat/dev/py/lang2lang/lang2lang.py --convert en
 ```
 
-**Русский** (`Super+Alt+R`):
+**Russian** (`Super+Alt+R`):
 
 ```
 /home/virtualvat/.local/bin/uv run /home/virtualvat/dev/py/lang2lang/.venv/bin/python /home/virtualvat/dev/py/lang2lang/lang2lang.py --convert ru
 ```
 
-**Украинский** (`Super+Alt+U`):
+**Ukrainian** (`Super+Alt+U`):
 
 ```
 /home/virtualvat/.local/bin/uv run /home/virtualvat/dev/py/lang2lang/.venv/bin/python /home/virtualvat/dev/py/lang2lang/lang2lang.py --convert ua
 ```
 
-> Если `uv` установлен не в `~/.local/bin`, узнайте путь: `command -v uv`. Подставьте его в команду.
+> If `uv` is not installed in `~/.local/bin`, find its path with `command -v uv` and substitute it into the command.
 >
-> Не используйте `uv run lang2lang.py` без явного пути к `.venv/bin/python` — `uv run` в этом случае попытается пересоздать окружение и может вести себя непредсказуемо при запуске из горячей клавиши (нет рабочего каталога, нет TTY). Явный путь к интерпретатору надёжнее.
+> Do not use `uv run lang2lang.py` without an explicit path to `.venv/bin/python` — in that case `uv run` will try to recreate the environment and may behave unpredictably when launched from a hotkey (no working directory, no TTY). An explicit interpreter path is more reliable.
 
-### Как это работает по шагам
+### How it works step by step
 
-1. Выделяете текст в любом приложении (мышью или `Shift`+стрелки).
-2. Нажимаете горячую клавишу.
-3. Скрипт читает PRIMARY selection, выбирает JSON-пару, у которой `to` совпадает с `--convert`, и которая даёт наибольшее число совпадений (пунктуация при подсчёте игнорируется, чтобы общие символы вроде запятой не выбирали чужую таблицу).
-4. Если преобразование возможно и результат отличается от исходника:
-   - переключает раскладку на целевую через Shyriiwook;
-   - печатает преобразованный текст через `xdotool type --clearmodifiers`.
-5. Если преобразование невозможно (нет совпадений, пустое выделение) — играет `error.wav` и ничего не делает.
+1. Select text in any application (with the mouse or `Shift`+arrows).
+2. Press the hotkey.
+3. The script reads the PRIMARY selection, picks the JSON pair whose `to` matches `--convert` and which yields the most matches (punctuation is ignored when scoring so common characters like a comma do not select the wrong table).
+4. If conversion is possible and the result differs from the source:
+   - it switches the layout to the target via Shyriiwook;
+   - it types the converted text with `xdotool type --clearmodifiers`.
+5. If conversion is not possible (no matches, empty selection) — it plays `error.wav` and does nothing.
 
-Лог пишется в `/tmp/lang2lang.log` — туда стоит смотреть при отладке.
+The log is written to `/tmp/lang2lang.log` — look there when debugging.
 
 ---
 
-## Добавление нового языка
+## Adding a new language
 
-Формат JSON-файла — словарь пар. Ключ пары — `"<откуда>_<куда>"`, значение — словарь посимвольного соответствия. Направление задаётся наличием пары с нужным `to`: для `--convert xx` скрипт ищет все пары, у которых `to == "xx"`.
+The JSON file format is a dictionary of pairs. The pair key is `"<from>_<to>"`, the value is a per-character mapping dictionary. The direction is defined by the presence of a pair with the required `to`: for `--convert xx` the script looks for all pairs where `to == "xx"`.
 
-Пример (`en-ru.json`):
+Example (`en-ru.json`):
 
 ```json
 {
@@ -162,92 +162,94 @@ uv run python lang2lang.py --convert en
 }
 ```
 
-Требования:
+Requirements:
 
-- ключ пары обязан содержать `_` (иначе пара игнорируется);
-- имя файла произвольное, важно только расширение `.json`;
-- кодировка UTF-8.
+- the pair key must contain `_` (otherwise the pair is ignored);
+- the file name is arbitrary, only the `.json` extension matters;
+- UTF-8 encoding.
 
-### Промпт для генерации новой пары через ИИ
+### AI prompt for generating a new pair
 
-Скопируйте промпт ниже в чат с ИИ (Claude, GPT и т.п.), подставив нужные языки и раскладки. Промпт рассчитан на то, что ИИ вернёт готовый JSON, который можно сохранить как есть.
+Copy the prompt below into a chat with an AI (Claude, GPT, etc.), substituting the desired languages and layouts. The prompt is designed so the AI returns ready-to-save JSON.
 
 ```
-Ты помогаешь сгенерировать файл соответствий клавиш для утилиты
-lang2lang. Утилита конвертирует выделенный текст из одной раскладки
-в другую посимвольно, используя JSON-словарь.
+You are helping generate a key mapping file for the lang2lang utility.
+The utility converts selected text from one layout to another
+character by character, using a JSON dictionary.
 
-Сгенерируй JSON для пары языков: ИСХОДНЫЙ_ЯЗЫК -> ЦЕЛЕВОЙ_ЯЗЫК.
-Раскладки: ИСХОДНАЯ_РАСКЛАДКА (код xkb) и ЦЕЛЕВАЯ_РАСКЛАДКА (код xkb).
+Generate JSON for the language pair: SOURCE_LANG -> TARGET_LANG.
+Layouts: SOURCE_LAYOUT (xkb code) and TARGET_LAYOUT (xkb code).
 
-Формат ответа — один JSON-объект, без пояснений, без markdown-обёртки:
+Response format — a single JSON object, no explanations, no markdown wrapper:
 
 {
-  "ИСХОДНЫЙ_КОД_ЦЕЛЕВОЙ_КОД": { "<символ в исходной раскладке>": "<символ в целевой раскладке>", ... },
-  "ЦЕЛЕВОЙ_КОД_ИСХОДНЫЙ_КОД": { "<символ в целевой раскладке>": "<символ в исходной раскладке>", ... }
+  "SOURCE_CODE_TARGET_CODE": { "<char in source layout>": "<char in target layout>", ... },
+  "TARGET_CODE_SOURCE_CODE": { "<char in target layout>": "<char in source layout>", ... }
 }
 
-Требования:
-1. Первая пара (ИСХОДНЫЙ_ЦЕЛЕВОЙ) — прямое соответствие: каждой клавише
-   исходной раскладки ставится в соответствие символ, который эта же
-   физическая клавиша даёт в целевой раскладке. Это НЕ транслитерация,
-   а соответствие по позиции клавиши на клавиатуре.
-2. Вторая пара (ЦЕЛЕВОЙ_ИСХОДНЫЙ) — обратное соответствие, полученное
-   инверсией первой пары.
-3. Покрой ВСЕ печатные клавиши: буквы в обоих регистрах, цифры (если
-   в раскладках они отличаются), знаки препинания, скобки, спецсимволы.
-   Не включай клавиши-модификаторы, Enter, Tab, стрелки, F-клавиши.
-4. Если какая-то клавиша в целевой раскладке даёт символ, которого нет
-   в исходной, или наоборот — пропусти её и перечисли отдельно в конце
-   ответа блоком "UNMAPPED: ..." (это единственный текст вне JSON).
-5. Убедись, что JSON валиден: двойные кавычки, экранирование `"` и `\`.
-6. Не добавляй комментарии внутрь JSON.
+Requirements:
+1. The first pair (SOURCE_TARGET) is a direct mapping: each key of the
+   source layout maps to the character the same physical key produces
+   in the target layout. This is NOT transliteration but a mapping by
+   key position on the keyboard.
+2. The second pair (TARGET_SOURCE) is the reverse mapping obtained by
+   inverting the first pair.
+3. Cover ALL printable keys: letters in both cases, digits (if they
+   differ between the layouts), punctuation, brackets, special
+   characters. Do not include modifier keys, Enter, Tab, arrows,
+   F-keys.
+4. If some key in the target layout produces a character that does not
+   exist in the source layout, or vice versa — skip it and list it
+   separately at the end of the response in an "UNMAPPED: ..." block
+   (this is the only text outside the JSON).
+5. Make sure the JSON is valid: double quotes, escaping of `"` and `\`.
+6. Do not add comments inside the JSON.
 ```
 
-После получения ответа:
+After receiving the response:
 
-1. Сохраните JSON в файл в каталоге проекта, например `de-fr.json` (имя произвольное, важно расширение `.json`).
-2. Проверьте валидность: `python -m json.tool de-fr.json > /dev/null`.
-3. Положите файл рядом с остальными и убедитесь, что он читается:
+1. Save the JSON to a file in the project directory, e.g. `de-fr.json` (the name is arbitrary, the `.json` extension matters).
+2. Validate it: `python -m json.tool de-fr.json > /dev/null`.
+3. Put the file next to the others and make sure it is read:
 
 ```bash
 uv run python -c "import lang2lang; print(len(lang2lang.load_pair_tables()))"
 ```
 
-   (число должно вырасти).
-4. Назначьте горячую клавишу с `--convert <целевой_код>`.
+   (the number should increase).
+4. Assign a hotkey with `--convert <target_code>`.
 
-### Что стоит проверить после генерации
+### What to check after generation
 
-- **Обратная пара** действительно является инверсией прямой. ИИ иногда «фантазирует» и делает обратное соответствие не по инверсии, а по смыслу. Быстрая проверка:
+- **The reverse pair** is really the inverse of the forward one. AI sometimes "hallucinates" and builds the reverse mapping by meaning instead of by inversion. Quick check:
 
 ```python
 import json
 d = json.load(open("de-fr.json"))
 fwd, rev = list(d.values())
 bad = [(k, v, rev.get(v)) for k, v in fwd.items() if rev.get(v) != k]
-print(bad)  # должно быть пусто
+print(bad)  # should be empty
 ```
 
-- **Регистр**: заглавные буквы и символы с `Shift` (например, `:` `"` `{` `}`) покрыты и в прямой, и в обратной паре.
-- **Спецсимволы целевой раскладки**, которых нет в исходной (например, `ґ` в украинской, `ё` в русской, `ß` в немецкой) — они должны быть в обратной паре, даже если в прямой для них нет «физической» клавиши-источника.
-- **Пунктуация**, общая для обеих раскладок (запятая, точка, пробел), может присутствовать в обеих парах — это нормально; `convert()` игнорирует пунктуацию при выборе таблицы, так что она не повлияет на выбор направления.
-- **Кириллица vs латиница**: для пар вида `ru-ua` (обе кириллические) прямая и обратная пары отличаются только несколькими буквами (`ы↔і`, `ъ↔ї`, `э↔є`, `ё↔'`). ИИ может попытаться «дополнить» файл лишними соответствиями — лучше оставить только реальные различия, иначе `convert()` может выбрать не ту таблицу из-за случайных совпадений.
+- **Case**: uppercase letters and `Shift` symbols (e.g. `:` `"` `{` `}`) are covered in both the forward and reverse pairs.
+- **Target-layout special characters** that do not exist in the source layout (e.g. `ґ` in Ukrainian, `ё` in Russian, `ß` in German) — they must be in the reverse pair even if there is no "physical" source key for them in the forward pair.
+- **Punctuation** shared by both layouts (comma, period, space) may be present in both pairs — that is fine; `convert()` ignores punctuation when choosing the table, so it will not affect direction selection.
+- **Cyrillic vs Latin**: for pairs like `ru-ua` (both Cyrillic) the forward and reverse pairs differ in only a few letters (`ы↔і`, `ъ↔ї`, `э↔є`, `ё↔'`). The AI may try to "pad" the file with extra mappings — it is better to keep only the real differences, otherwise `convert()` may pick the wrong table due to random matches.
 
 ---
 
-## Отладка
+## Debugging
 
-Лог: `/tmp/lang2lang.log`. Полезные записи:
+Log: `/tmp/lang2lang.log`. Useful entries:
 
-- `selection: '...'` — что прочиталось из PRIMARY selection (первые 100 символов);
-- `converted: '...', found=True/False` — результат преобразования и была ли найдена подходящая таблица;
-- `layout for 'xx' not found` — в `input-sources` нет раскладки, соответствующей целевому языку (проверьте `gsettings get org.gnome.desktop.input-sources sources`).
+- `selection: '...'` — what was read from the PRIMARY selection (first 100 characters);
+- `converted: '...', found=True/False` — the conversion result and whether a matching table was found;
+- `layout for 'xx' not found` — there is no layout corresponding to the target language in `input-sources` (check `gsettings get org.gnome.desktop.input-sources sources`).
 
-Если раскладка не переключается:
+If the layout does not switch:
 
-- проверьте, что расширение Shyriiwook включено: `gnome-extensions list --enabled | grep shyriiwook`;
-- проверьте D-Bus вручную:
+- check that the Shyriiwook extension is enabled: `gnome-extensions list --enabled | grep shyriiwook`;
+- check D-Bus manually:
 
 ```bash
 gdbus call --session --dest org.gnome.Shell \
@@ -255,15 +257,15 @@ gdbus call --session --dest org.gnome.Shell \
     --method me.madhead.Shyriiwook.activate ru
 ```
 
-- убедитесь, что вы в X11-сессии (`echo $XDG_SESSION_TYPE` → `x11`). Под Wayland `xdotool type` не работает; нужен `ydotool`/`wtype` — это отдельная доработка, в текущем виде скрипт рассчитан на X11.
+- make sure you are in an X11 session (`echo $XDG_SESSION_TYPE` → `x11`). Under Wayland `xdotool type` does not work; you would need `ydotool`/`wtype` — that is a separate improvement, the current version targets X11.
 
-Если `xdotool type` печатает не то:
+If `xdotool type` types the wrong thing:
 
-- проверьте, что раскладка действительно переключилась до ввода (в `run_once` есть пауза 0.3 с; если гонка остаётся — увеличьте);
-- убедитесь, что в целевой раскладке есть все символы из `converted` (например, `ґ` требует украинской раскладки с `ґ`, а не `ua`-варианта без него).
+- check that the layout actually switched before typing (there is a 0.3 s pause in `run_once`; if the race remains, increase it);
+- make sure the target layout contains all characters from `converted` (e.g. `ґ` requires a Ukrainian layout with `ґ`, not a `ua` variant without it).
 
 ---
 
-## Лицензия
+## License
 
-MIT. См. `LICENSE`.
+MIT. See `LICENSE`.
