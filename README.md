@@ -1,75 +1,69 @@
 # lang2lang
 
-A one-shot converter for selected text between keyboard layouts. Select text, press a hotkey — the script reads the selection, maps each character to the target layout, switches the system layout to the target, and types the result in place of the selection.
+A one-shot converter for text typed in the wrong keyboard layout. Select text, press a hotkey, and it retypes the selection in the correct layout (for example, English `ghbdtn` becomes Russian `привет`).
 
-Supported directions are defined by JSON files in the project directory: `en-ru.json`, `en-ua.json`, `ru-ua.json` (and the reverse pairs inside them). To add a new language you just drop another JSON file next to them — no code changes required.
+Works by:
+1. Reading the PRIMARY selection (the text you have highlighted).
+2. Picking the best conversion table for the requested target language (it scores how many characters in your selection match a given table, ignoring punctuation).
+3. Switching the GNOME input source to that target layout.
+4. Retyping the converted text with `xdotool`.
+
+If the selection is empty, nothing matches, or the conversion is a no-op, it plays an error sound (`error.wav`) and exits.
 
 ---
 
 ## Requirements
 
-### 1. System utilities
+- Linux with GNOME Shell (the layout switching uses `gdbus` against the `org.gnome.Shell` `me.madhead.Shyriiwook` interface, so the **Shyriiwook** GNOME extension is required: https://github.com/madhead/shyriiwook).
+- Python `>=3.12,<3.13` (see `pyproject.toml`).
+- System binaries:
+  - `gsettings` (part of GNOME, for reading input sources)
+  - `gdbus` (part of GLib, for switching layouts)
+  - `xdotool` (for typing the converted text)
+  - `paplay` (PulseAudio/PipeWire, for the error sound; optional — if missing, the error sound is silently skipped)
+  - `tkinter` (Python Tk, used to read the PRIMARY selection; usually provided by your distro's `python3-tk` package)
 
-The script calls these from the command line, so they must be in `PATH`.
+### Install the system dependencies
 
-| Utility | Purpose |
-|---|---|
-| `xdotool` | input emulation (`xdotool type`) |
-| `xclip` | clipboard access |
-| `paplay` | plays `error.wav` (pipewire/pulseaudio) |
-| `gsettings` | reads the GNOME layout list |
-| `gdbus` | calls the Shyriiwook extension to switch layout |
-
-Install (Debian/Ubuntu):
-
-```bash
-sudo apt install xdotool xclip pulseaudio-utils python3-tk
-```
-
-Fedora:
+On Debian/Ubuntu-based systems:
 
 ```bash
-sudo dnf install xdotool xclip pulseaudio-utils python3-tkinter
+sudo apt install xdotool pulseaudio-utils python3-tk libglib2.0-bin
 ```
 
-Arch:
+On Fedora:
 
 ```bash
-sudo pacman -S xdotool xclip libpulse tk
+sudo dnf install xdotool pulseaudio-utils python3-tkinter glib2
 ```
 
-> `python3-tk` is needed because the script reads the PRIMARY selection through `tkinter`. Some distributions do not ship it with the base Python package.
-
-### 2. GNOME extension Shyriiwook
-
-The standard `gsettings set org.gnome.desktop.input-sources current N` **does not work** on modern GNOME — the key is deprecated and ignored. Layout switching is done through the D-Bus interface exposed by the extension.
-
-1. Install the **Shyriiwook** extension from [extensions.gnome.org](https://extensions.gnome.org/) (or via `gnome-extensions install`).
-2. Enable it:
+On Arch:
 
 ```bash
-gnome-extensions enable shyriiwook@madhead.me
+sudo pacman -S xdotool libpulse tk glib2
 ```
 
-3. Log out and back in (or `Alt+F2` → `r` → Enter on X11) so the extension loads.
-4. Verify the interface is available:
+Also install the **Shyriiwook** GNOME extension and make sure you have more than one input source configured (e.g. English + Russian, English + Ukrainian).
 
-```bash
-gdbus introspect --session --dest org.gnome.Shell \
-    --object-path /me/madhead/Shyriiwook --only-properties
-```
+---
 
-   The output should contain the layout list (`availableLayouts`).
+## Install `uv`
 
-### 3. The `uv` utility
-
-`uv` is a Python environment and dependency manager. Install it:
+`uv` is the project's toolchain (dependency/environment manager and runner).
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-After installation, restart your shell or run `source ~/.local/bin/env` (the path may differ — check the installer output). Verify:
+This installs `uv` into `~/.local/bin` (make sure that directory is on your `PATH`, then restart your shell or `source ~/.profile`).
+
+Alternatively, via pipx:
+
+```bash
+pipx install uv
+```
+
+Verify:
 
 ```bash
 uv --version
@@ -77,83 +71,73 @@ uv --version
 
 ---
 
-## Installing the project
+## Set up the project
+
+Clone/copy the project directory somewhere (in the examples below it lives at `~/dev/py/lang2lang`), then from inside the project directory:
 
 ```bash
-git clone <REPO-URL> ~/dev/py/lang2lang
 cd ~/dev/py/lang2lang
-
-# create the virtual environment and install dependencies
 uv sync
 ```
 
-`uv sync` creates `.venv/` in the project directory and installs the pip dependencies from `pyproject.toml` (if the list is empty the environment will be empty, but `.venv/bin/python` will still exist and be used).
+`uv sync` creates a `.venv` in the project directory and installs the project (there are no third-party dependencies, so this is quick).
 
-Verify the script runs:
+You can test the converter manually from a terminal while some text is selected:
 
 ```bash
 uv run python lang2lang.py --convert en
+```bash
+uv run python lang2lang.py --convert ru
+```bash
+uv run python lang2lang.py --convert ua
 ```
 
-Expected behavior: if nothing is selected — silence and an error sound (if `error.wav` is present); a record appears in `/tmp/lang2lang.log`.
+Notes:
+- `--convert` is the **target** language: `en`, `ru`, or `ua`.
+- The script reads the PRIMARY selection, so select some text with the mouse first.
+- Logs go to `/tmp/lang2lang.log` if something misbehaves.
 
 ---
 
-## Assigning hotkeys
+## Assign GNOME hotkeys
 
-Hotkeys are assigned through GNOME: **Settings → Keyboard → Keyboard Shortcuts → Custom Shortcuts** (`+`).
+Open **Settings → Keyboard → Keyboard Shortcuts → View and Customize Shortcuts → Custom Shortcuts** and add one shortcut per target language.
 
-For each command set a name, a key combination, and the **full command**. The command must launch the project's `.venv` Python through `uv run` so the correct environment is used.
+Use the **absolute path** to the `uv` binary (usually `~/.local/bin/uv`) and the absolute path to the project's `lang2lang.py`. Passing the interpreter from the project's `.venv` explicitly is the most reliable form:
 
-Command template:
-
-```
-/home/USER/.local/bin/uv run /path/to/lang2lang/.venv/bin/python /path/to/lang2lang/lang2lang.py --convert LANG
-```
-
-Replace `USER` and `/path/to/lang2lang` with your own. Example for user `virtualvat` with the project in `~/dev/py/lang2lang`:
-
-**English** (`Super+Alt+E`):
-
-```
+```text
 /home/virtualvat/.local/bin/uv run /home/virtualvat/dev/py/lang2lang/.venv/bin/python /home/virtualvat/dev/py/lang2lang/lang2lang.py --convert en
 ```
 
-**Russian** (`Super+Alt+R`):
+Replace `/home/virtualvat` with your own home directory, and the project path with wherever you put it.
 
+Suggested shortcuts:
+
+| Shortcut        | Command (example)                                                                                                                  |
+|-----------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| `Super+Shift+E` | `/home/virtualvat/.local/bin/uv run /home/virtualvat/dev/py/lang2lang/.venv/bin/python /home/virtualvat/dev/py/lang2lang/lang2lang.py --convert en` |
+| `Super+Shift+R` | `/home/virtualvat/.local/bin/uv run /home/virtualvat/dev/py/lang2lang/.venv/bin/python /home/virtualvat/dev/py/lang2lang/lang2lang.py --convert ru` |
+| `Super+Shift+U` | `/home/virtualvat/.local/bin/uv run /home/virtualvat/dev/py/lang2lang/.venv/bin/python /home/virtualvat/dev/py/lang2lang/lang2lang.py --convert ua` |
+
+A simpler alternative (works if the script is executable and the environment is already synced):
+
+```text
+/home/virtualvat/.local/bin/uv run python /home/virtualvat/dev/py/lang2lang/lang2lang.py --convert en
 ```
-/home/virtualvat/.local/bin/uv run /home/virtualvat/dev/py/lang2lang/.venv/bin/python /home/virtualvat/dev/py/lang2lang/lang2lang.py --convert ru
-```
 
-**Ukrainian** (`Super+Alt+U`):
+### Usage
 
-```
-/home/virtualvat/.local/bin/uv run /home/virtualvat/dev/py/lang2lang/.venv/bin/python /home/virtualvat/dev/py/lang2lang/lang2lang.py --convert ua
-```
+1. Select (highlight) the text in any application.
+2. Press the hotkey for the layout the text *should* be in.
+3. The text is replaced in place, and the active layout is switched to the target language.
 
-> If `uv` is not installed in `~/.local/bin`, find its path with `command -v uv` and substitute it into the command.
->
-> Do not use `uv run lang2lang.py` without an explicit path to `.venv/bin/python` — in that case `uv run` will try to recreate the environment and may behave unpredictably when launched from a hotkey (no working directory, no TTY). An explicit interpreter path is more reliable.
-
-### How it works step by step
-
-1. Select text in any application (with the mouse or `Shift`+arrows).
-2. Press the hotkey.
-3. The script reads the PRIMARY selection, picks the JSON pair whose `to` matches `--convert` and which yields the most matches (punctuation is ignored when scoring so common characters like a comma do not select the wrong table).
-4. If conversion is possible and the result differs from the source:
-   - it switches the layout to the target via Shyriiwook;
-   - it types the converted text with `xdotool type --clearmodifiers`.
-5. If conversion is not possible (no matches, empty selection) — it plays `error.wav` and does nothing.
-
-The log is written to `/tmp/lang2lang.log` — look there when debugging.
+If nothing happens, check `/tmp/lang2lang.log` and make sure `error.wav` exists next to the script (otherwise errors are silent).
 
 ---
 
-## Adding a new language
+## How the conversion tables work
 
-The JSON file format is a dictionary of pairs. The pair key is `"<from>_<to>"`, the value is a per-character mapping dictionary. The direction is defined by the presence of a pair with the required `to`: for `--convert xx` the script looks for all pairs where `to == "xx"`.
-
-Example (`en-ru.json`):
+Conversion tables live in `*.json` files next to `lang2lang.py`. Each file can contain one or more pairs, keyed as `from_to`:
 
 ```json
 {
@@ -162,110 +146,125 @@ Example (`en-ru.json`):
 }
 ```
 
-Requirements:
+- The **file name is irrelevant**; every `*.json` in the script's directory is loaded.
+- The key is split on the first `_`: the left part is the source language, the right part is the target language.
+- When you run `--convert <lang>`, only tables whose target equals `<lang>` are considered. Among those, the table that matches the most non-punctuation characters in the selection wins.
+- Characters not present in the chosen table are left unchanged.
+- Both directions must be present for a pair to be useful in practice (`en_ru` **and** `ru_en`, etc.), because the converter only uses the direction pointing at the requested target language.
 
-- the pair key must contain `_` (otherwise the pair is ignored);
-- the file name is arbitrary, only the `.json` extension matters;
-- UTF-8 encoding.
+Existing tables:
 
-### AI prompt for generating a new pair
+| File          | Pairs                       |
+|---------------|-----------------------------|
+| `en-ru.json`  | `en_ru`, `ru_en`            |
+| `en-ua.json`  | `en_ua`, `ua_en`            |
+| `ru-ua.json`  | `ru_ua`, `ua_ru` (only the differing letters: `ы/і`, `ъ/ї`, `э/є`, `ё/'`) |
 
-Copy the prompt below into a chat with an AI (Claude, GPT, etc.), substituting the desired languages and layouts. The prompt is designed so the AI returns ready-to-save JSON.
-
-```
-You are helping generate a key mapping file for the lang2lang utility.
-The utility converts selected text from one layout to another
-character by character, using a JSON dictionary.
-
-Generate JSON for the language pair: SOURCE_LANG -> TARGET_LANG.
-Layouts: SOURCE_LAYOUT (xkb code) and TARGET_LAYOUT (xkb code).
-
-Response format — a single JSON object, no explanations, no markdown wrapper:
-
-{
-  "SOURCE_CODE_TARGET_CODE": { "<char in source layout>": "<char in target layout>", ... },
-  "TARGET_CODE_SOURCE_CODE": { "<char in target layout>": "<char in source layout>", ... }
-}
-
-Requirements:
-1. The first pair (SOURCE_TARGET) is a direct mapping: each key of the
-   source layout maps to the character the same physical key produces
-   in the target layout. This is NOT transliteration but a mapping by
-   key position on the keyboard.
-2. The second pair (TARGET_SOURCE) is the reverse mapping obtained by
-   inverting the first pair.
-3. Cover ALL printable keys: letters in both cases, digits (if they
-   differ between the layouts), punctuation, brackets, special
-   characters. Do not include modifier keys, Enter, Tab, arrows,
-   F-keys.
-4. If some key in the target layout produces a character that does not
-   exist in the source layout, or vice versa — skip it and list it
-   separately at the end of the response in an "UNMAPPED: ..." block
-   (this is the only text outside the JSON).
-5. Make sure the JSON is valid: double quotes, escaping of `"` and `\`.
-6. Do not add comments inside the JSON.
-```
-
-After receiving the response:
-
-1. Save the JSON to a file in the project directory, e.g. `de-fr.json` (the name is arbitrary, the `.json` extension matters).
-2. Validate it: `python -m json.tool de-fr.json > /dev/null`.
-3. Put the file next to the others and make sure it is read:
-
-```bash
-uv run python -c "import lang2lang; print(len(lang2lang.load_pair_tables()))"
-```
-
-   (the number should increase).
-4. Assign a hotkey with `--convert <target_code>`.
-
-### What to check after generation
-
-- **The reverse pair** is really the inverse of the forward one. AI sometimes "hallucinates" and builds the reverse mapping by meaning instead of by inversion. Quick check:
-
-```python
-import json
-d = json.load(open("de-fr.json"))
-fwd, rev = list(d.values())
-bad = [(k, v, rev.get(v)) for k, v in fwd.items() if rev.get(v) != k]
-print(bad)  # should be empty
-```
-
-- **Case**: uppercase letters and `Shift` symbols (e.g. `:` `"` `{` `}`) are covered in both the forward and reverse pairs.
-- **Target-layout special characters** that do not exist in the source layout (e.g. `ґ` in Ukrainian, `ё` in Russian, `ß` in German) — they must be in the reverse pair even if there is no "physical" source key for them in the forward pair.
-- **Punctuation** shared by both layouts (comma, period, space) may be present in both pairs — that is fine; `convert()` ignores punctuation when choosing the table, so it will not affect direction selection.
-- **Cyrillic vs Latin**: for pairs like `ru-ua` (both Cyrillic) the forward and reverse pairs differ in only a few letters (`ы↔і`, `ъ↔ї`, `э↔є`, `ё↔'`). The AI may try to "pad" the file with extra mappings — it is better to keep only the real differences, otherwise `convert()` may pick the wrong table due to random matches.
+Note that `ru-ua.json` is a *letter-level* mapping between two Cyrillic layouts, not a full physical keyboard mapping. It is used to fix individual letters, not to translate whole words typed in the other Cyrillic layout.
 
 ---
 
-## Debugging
+## Adding a new language
 
-Log: `/tmp/lang2lang.log`. Useful entries:
+1. Decide the language codes (they are free-form strings used in `--convert` and in the JSON keys), e.g. `de`, `fr`, `pl`.
+2. Create a new JSON file, e.g. `en-de.json`, containing both directions:
 
-- `selection: '...'` — what was read from the PRIMARY selection (first 100 characters);
-- `converted: '...', found=True/False` — the conversion result and whether a matching table was found;
-- `layout for 'xx' not found` — there is no layout corresponding to the target language in `input-sources` (check `gsettings get org.gnome.desktop.input-sources sources`).
-
-If the layout does not switch:
-
-- check that the Shyriiwook extension is enabled: `gnome-extensions list --enabled | grep shyriiwook`;
-- check D-Bus manually:
-
-```bash
-gdbus call --session --dest org.gnome.Shell \
-    --object-path /me/madhead/Shyriiwook \
-    --method me.madhead.Shyriiwook.activate ru
+```json
+{
+  "en_de": {
+    "q": "q", "w": "w", "e": "e",
+    "a": "a", "s": "s", "d": "d",
+    "...": "..."
+  },
+  "de_en": {
+    "q": "q", "w": "w", "e": "e",
+    "a": "a", "s": "s", "d": "d",
+    "...": "..."
+  }
+}
 ```
 
-- make sure you are in an X11 session (`echo $XDG_SESSION_TYPE` → `x11`). Under Wayland `xdotool type` does not work; you would need `ydotool`/`wtype` — that is a separate improvement, the current version targets X11.
+The full standard 105-key physical mapping (rows `qwertyuiop[]`, `asdfghjkl;'`, `zxcvbnm,./`, plus `\|` and the shifted variants) is what you want for a complete table. See `en-ru.json` / `en-ua.json` for the exact shape.
 
-If `xdotool type` types the wrong thing:
+3. Add the target language to the layout detection if you also want automatic layout switching. In `lang2lang.py`:
 
-- check that the layout actually switched before typing (there is a 0.3 s pause in `run_once`; if the race remains, increase it);
-- make sure the target layout contains all characters from `converted` (e.g. `ґ` requires a Ukrainian layout with `ґ`, not a `ua` variant without it).
+```python
+LANG_MATCHERS = {
+    "en": lambda code: code == "us" or "eng" in code.split("+") or "en" in code.split("+"),
+    "ru": lambda code: "ru" in code.split("+"),
+    "ua": lambda code: "ua" in code.split("+"),
+    # add e.g.:
+    # "de": lambda code: "de" in code.split("+"),
+}
+```
+
+The matcher receives the xkb source code (e.g. `us`, `ru`, `ua+eng`) and must return `True` for the layout that corresponds to the target language.
+
+4. Add a GNOME hotkey for the new `--convert <lang>` command, as described above.
+
+> No code changes are needed just to *convert text* — dropping a new `*.json` file is enough. The `LANG_MATCHERS` change only controls the automatic layout switch.
+
+### Prompt for generating a new table with an LLM
+
+Paste the following into your favorite LLM (adjust the languages):
+
+```text
+I need a keyboard-layout conversion table in JSON for a tool that fixes text typed
+in the wrong layout.
+
+Source layout: English (US QWERTY, xkb code "us").
+Target layout: German (xkb code "de").
+
+Produce a JSON object with two keys, "en_de" and "de_en", in exactly this format:
+
+{
+  "en_de": { "<english char>": "<german char>", ... },
+  "de_en": { "<german char>": "<english char>", ... }
+}
+
+Rules:
+- Include ALL printable characters on a standard 105-key keyboard for both layouts:
+  unshifted and shifted forms.
+- Rows to cover, as physical positions on the keyboard:
+    ` q w e r t y u i o p [ ] \ `
+    ` a s d f g h j k l ; ' `
+    ` z x c v b n m , . / `
+  (backtick and tilde included)
+- `en_de` maps the character produced by a key in the English layout to the
+  character produced by the SAME physical key in the German layout.
+- `de_en` must be the exact inverse of `en_de` (swap every key/value pair).
+- Preserve case: uppercase maps to uppercase (e.g. "Q" -> "Q").
+- Use literal characters (e.g. "й", "ї", "ß"), not escape sequences, except for
+  backslash and double quote which must be escaped in JSON ("\\\\" and "\\"").
+- Output valid JSON only, no comments, no trailing commas.
+- If a character has no counterpart on the same physical key in the other layout,
+  omit that entry from the table (do not guess).
+```
+
+Then save the result as `en-de.json` (or whatever matches your codes) in the project directory. It will be picked up automatically on the next run.
+
+**Also useful to add after generating a table:**
+- Spot-check a few tricky keys (punctuation, brackets, quotes) by comparing with the actual layouts in GNOME's keyboard layout viewer.
+- Make sure the two halves are exact inverses of each other, e.g. with a quick script:
+  ```bash
+  uv run python -c "import json; d=json.load(open('en-de.json')); print(all(d['en_de'][k]==v and d['de_en'][v]==k for k,v in d['en_de'].items() if v in d['de_en']))"
+  ```
+- Add the corresponding `LANG_MATCHERS` entry if you want automatic layout switching.
+- Add a hotkey for the new `--convert` target.
+
+---
+
+## Troubleshooting
+
+- **Nothing happens when pressing the hotkey.** Check `/tmp/lang2lang.log`. Also make sure `error.wav` is present next to the script — otherwise failure is silent.
+- **Error sound plays instead of converting.** Either nothing is selected, or the selection contains no characters that match the target table (e.g. you're converting to `en` while the text is already Latin with no Cyrillic characters).
+- **Layout doesn't switch.** Confirm the **Shyriiwook** extension is installed and enabled, and that `gsettings get org.gnome.desktop.input-sources sources` lists a matching xkb source (e.g. `ru` or `ua+eng`).
+- **`xdotool` types the wrong characters.** The active layout must actually be switched before typing. If needed, increase the pause in the script (the `threading.Event().wait(...)` calls show where a delay can be added).
+- **`tkinter` import error.** Install `python3-tk` (Debian/Ubuntu), `python3-tkinter` (Fedora), or `tk` (Arch).
+- **`gdbus`/`gsettings` not found.** Install GLib utilities (`libglib2.0-bin` on Debian/Ubuntu, `glib2` on Fedora/Arch).
 
 ---
 
 ## License
 
-MIT. See `LICENSE`.
+MIT — see `LICENSE`. Copyright (c) 2026 Vitaliy Tkachenko.

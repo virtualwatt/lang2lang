@@ -109,6 +109,7 @@ def switch_layout(target_lang):
     except FileNotFoundError:
         log("gdbus not found")
 
+
 # ---------------------------------------------------------------
 # 1. Загрузка парных таблиц из JSON-файлов
 # ---------------------------------------------------------------
@@ -153,39 +154,6 @@ def get_primary_selection():
         return ""
     finally:
         root.destroy()
-
-
-# ---------------------------------------------------------------
-# 3. Работа с буфером обмена и вставка
-# ---------------------------------------------------------------
-def get_clipboard():
-    try:
-        res = subprocess.run(
-            ["xclip", "-selection", "clipboard", "-o"],
-            capture_output=True,
-            check=True,
-        )
-        return res.stdout.decode("utf-8", errors="replace")
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return ""
-
-
-def set_clipboard(text):
-    try:
-        subprocess.run(
-            ["xclip", "-selection", "clipboard"],
-            input=text.encode("utf-8"),
-            check=False,
-            capture_output=True,
-        )
-    except FileNotFoundError:
-        pass
-
-
-def paste():
-    """Эмулирует Ctrl+V."""
-    # pyautogui.hotkey("ctrl", "v")
-    subprocess.run(["xdotool", "key", "ctrl+v"], check=False)
 
 
 # ---------------------------------------------------------------
