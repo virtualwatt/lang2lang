@@ -23,6 +23,57 @@ If the selection is empty, nothing matches, or the conversion is a no-op, it pla
   - `paplay` (PulseAudio/PipeWire, for the error sound; optional — if missing, the error sound is silently skipped)
   - `tkinter` (Python Tk, used to read the PRIMARY selection; usually provided by your distro's `python3-tk` package)
 
+---
+
+## Quick install (recommended)
+
+The project ships with an installer that handles **everything**: system packages, `uv`, Python 3.12, and the project environment. It auto-detects your distribution (Debian/Ubuntu, Fedora, Arch, openSUSE) and is idempotent — safe to re-run.
+
+```bash
+cd ~/dev/py/lang2lang
+chmod +x install.sh
+./install.sh
+```
+
+What it does:
+
+1. Detects the distribution from `/etc/os-release`.
+2. Checks for the required utilities (`gsettings`, `gdbus`, `xdotool`) and `tkinter`.
+3. Installs the missing system packages via `apt` / `dnf` / `pacman` / `zypper`:
+   - `xdotool`, `pulseaudio-utils` (`paplay`), `python3-tk`, `libglib2.0-bin` / `glib2` (for `gdbus`/`gsettings`), plus `curl` and `ca-certificates` for `uv`.
+4. Installs `uv` — via `pipx` if available, otherwise with the official `astral.sh` script. Adds `~/.local/bin` to `PATH` for the current session.
+5. Installs Python 3.12 via `uv` if it's missing.
+6. Runs `uv sync` to create `.venv` and install the project.
+7. Warns if `error.wav` is missing or if the **Shyriiwook** extension isn't reachable via D-Bus.
+8. Prints example commands for manual testing and for assigning a GNOME hotkey.
+
+### Installer flags
+
+| Flag | Purpose |
+|------|---------|
+| `--no-system` | Skip system package installation (no `sudo` needed) |
+| `--no-uv` | Skip `uv` installation (if already on `PATH`) |
+| `-h`, `--help` | Show help |
+
+### After the installer
+
+1. Install the **Shyriiwook** GNOME extension and make sure you have more than one input source configured (e.g. English + Russian, English + Ukrainian):
+   https://github.com/madhead/shyriiwook
+2. Assign GNOME hotkeys (see [Assign GNOME hotkeys](#assign-gnome-hotkeys) below).
+3. Test manually while some text is selected:
+
+   ```bash
+   uv run python lang2lang.py --convert en
+   uv run python lang2lang.py --convert ru
+   uv run python lang2lang.py --convert ua
+   ```
+
+---
+
+## Manual installation (alternative)
+
+If you'd rather install everything by hand, or the installer doesn't fit your setup, follow the steps below.
+
 ### Install the system dependencies
 
 On Debian/Ubuntu-based systems:
@@ -262,6 +313,7 @@ Then save the result as `en-de.json` (or whatever matches your codes) in the pro
 - **`xdotool` types the wrong characters.** The active layout must actually be switched before typing. If needed, increase the pause in the script (the `threading.Event().wait(...)` calls show where a delay can be added).
 - **`tkinter` import error.** Install `python3-tk` (Debian/Ubuntu), `python3-tkinter` (Fedora), or `tk` (Arch).
 - **`gdbus`/`gsettings` not found.** Install GLib utilities (`libglib2.0-bin` on Debian/Ubuntu, `glib2` on Fedora/Arch).
+- **Installer says "Unknown distribution".** Install the system packages manually (see [Manual installation](#manual-installation-alternative)), then re-run `./install.sh --no-system`.
 
 ---
 
